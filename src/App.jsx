@@ -342,14 +342,21 @@ export default function App() {
   }
   function start() {
     if (!difficulty) return;
-    const g = generateGrid(rows, cols);
-    const o = generateObjectiveLines(g, lineLenRange, linesCount);
-    setGrid(g); setObjectiveLines(o); setLineProgress(o.map(() => 0)); setActiveLine(null);
-    setRunning(true); setTimeLeft(TIMER_SECONDS); setConstraint("top-row"); setLastPos(null); setFaults(0);
-    setHoverToken(null); setObjHoverToken(null); setWin(false); setFail(false); setMessage(""); setLastClicked(null);
+    // Use the currently displayed grid/objectives — do not regenerate
+    setLineProgress((prev) => objectiveLines.map(() => 0));
+    setActiveLine(null);
+    setRunning(true);
+    setTimeLeft(TIMER_SECONDS);
+    setConstraint("top-row");
+    setLastPos(null);
+    setFaults(0);
+    setHoverToken(null);
+    setObjHoverToken(null);
+    setWin(false);
+    setFail(false);
+    setMessage("");
+    setLastClicked(null);
     setCompeteSet(null);
-
-    devSelfTest(g, o);
   }
   function stop() { setRunning(false); }
 
@@ -411,14 +418,13 @@ export default function App() {
         <header className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-3xl font-black tracking-tight">SCP:RP Hacking — {difficulty.toUpperCase()}</h1>
-            <p className="text-sm text-neutral-400">Plan first, then hit <span className="font-semibold">Start (fresh)</span> to play.</p>
+            <p className="text-sm text-neutral-400">Press <span className="font-semibold">Start</span> to play this exact grid.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button className="rounded-2xl bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700" onClick={() => setDifficulty(null)} disabled={running}>Change Difficulty</button>
             {!running ? (
               <>
-                <button className="rounded-2xl bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700" onClick={newSetup}>New Setup (plan)</button>
-                <button className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500" onClick={start}>Start (fresh)</button>
+                <button className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500" onClick={start}>Start</button>
               </>
             ) : (
               <button className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold hover:bg-rose-500" onClick={stop}>Stop</button>
