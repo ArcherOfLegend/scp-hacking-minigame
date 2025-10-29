@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 /**
  * SCP:RP Row/Column Hacking — Full Previewable React (single file)
@@ -129,6 +129,36 @@ function generateObjectiveLines(grid, lenOrRange, numLines) {
   return lines;
 }
 
+function useSFX() {
+  const [enabled, setEnabled] = useState(true);
+
+  const sfx = useMemo(() => ({
+    correct: new Audio("/sfx/correct.mp3"),
+    fault: new Audio("/sfx/fault.mp3"),
+    start: new Audio("/sfx/start.mp3"),
+    win: new Audio("/sfx/win.mp3"),
+    fail: new Audio("/sfx/fail.mp3"),
+  }), []);
+
+  useEffect(() => {
+    Object.values(sfx).forEach((a) => {
+      a.volume = 0.5;
+      a.preload = "auto";
+    });
+  }, [sfx]);
+
+  const play = (key) => {
+    if (!enabled) return;
+    const a = sfx[key];
+    if (!a) return;
+    a.currentTime = 0;
+    a.play().catch(() => {});
+  };
+
+  return { play, enabled, setEnabled };
+}
+
+
 export default function App() {
   // difficulty selection
   const [difficulty, setDifficulty] = useState(null); // 'easy' | 'medium' | 'hard'
@@ -157,6 +187,7 @@ export default function App() {
   const [win, setWin] = useState(false);
   const [fail, setFail] = useState(false);
   const [lastClicked, setLastClicked] = useState(null);    // {r,c, token, status: 'correct'|'fault'}
+  const { play, enabled, setEnabled } = useSFX();
 
   // NEW: state for branch invalidation & cohorts
   const [competeSet, setCompeteSet] = useState(null); // Set<number> or null
@@ -193,7 +224,7 @@ export default function App() {
   }, [running, win, fail]);
   useEffect(() => { if (timeLeft <= 0 && running) doFail("Time's up."); }, [timeLeft, running]);
 
-  function doFail(msg) { setFail(true); setRunning(false); setMessage(msg); }
+  function doFail(msg) { play("fail"); setFail(true); setRunning(false); setMessage(msg); }
 
   // strict constraint checks
   function allowed(r, c) {
@@ -223,6 +254,7 @@ export default function App() {
   function tokenInCompletedLine(_token) { return false; }
 
   function correctPickMulti(lineIndexes, r, c) {
+    play("correct");
     // Advance ALL matching lines by one
     setLineProgress((prev) => {
       const next = [...prev];
@@ -257,29 +289,43 @@ export default function App() {
         const inc = lineIndexes.includes(i) ? 1 : 0;
         return (lineProgress[i] + inc) >= line.length;
       });
-      if (done) { setWin(true); setRunning(false); }
+      if (done) { play("win"); setWin(true); setRunning(false); }
     }, 0);
   }
 
   function fault(msg, r, c) {
+    play("fault");
     setFaults((f) => { const nf = f + 1; if (nf >= FAULTS_MAX) { doFail("Too many faults."); } return nf; });
-
-    // reset active, in-progress line only
+  
+    // Reset the cohort if present; otherwise reset only the active line
     setLineProgress((prev) => {
-      if (activeLine === null) return prev;
-      const line = objectiveLines[activeLine] || [];
-      const prog = prev[activeLine] ?? 0;
-      if (prog > 0 && prog < line.length) { const next = [...prev]; next[activeLine] = 0; return next; }
-      return prev;
+      const next = [...prev];
+  
+      const resetIndexes =
+        (competeSet && competeSet.size > 0) ? [...competeSet]
+        : (activeLine !== null ? [activeLine] : []);
+  
+      if (resetIndexes.length === 0) return prev;
+  
+      let changed = false;
+      for (const idx of resetIndexes) {
+        const line = objectiveLines[idx] || [];
+        const prog = next[idx] ?? 0;
+        if (prog > 0 && prog < line.length) { next[idx] = 0; changed = true; }
+      }
+      return changed ? next : prev;
     });
-
+  
     setMessage(msg); setTimeout(() => setMessage(""), 600);
-
+  
     setLastPos({ r, c });
     setLastClicked({ r, c, token: grid[r][c], status: "fault" });
     toggleConstraint();
+  
+    // Clear active/compete after a fault
+    setActiveLine(null);
+    setCompeteSet(null);
   }
-
   // --- UPDATED: divergence-aware handlePick ---
   function handlePick(r, c) {
     if (!running || win || fail) return;
@@ -346,6 +392,7 @@ export default function App() {
     setLineProgress((prev) => objectiveLines.map(() => 0));
     setActiveLine(null);
     setRunning(true);
+    play("start");
     setTimeLeft(TIMER_SECONDS);
     setConstraint("top-row");
     setLastPos(null);
@@ -397,13 +444,28 @@ export default function App() {
   // difficulty screen
   if (!difficulty) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-neutral-100">
-        <div className="rounded-3xl bg-neutral-900 p-10 text-center shadow-xl">
+      <div className="fixed inset-0 flex items-center justify-center bg-neutral-950 text-neutral-100">
+        <div className="w-full max-w-md rounded-3xl bg-neutral-900 p-10 text-center shadow-xl">
           <h1 className="mb-6 text-3xl font-black">Select Difficulty</h1>
-          <div className="flex flex-col gap-4">
-            <button onClick={() => selectDifficulty("easy")} className="rounded-xl bg-emerald-600 px-6 py-3 font-semibold hover:bg-emerald-500">Easy (2×2 · 2 lines · 2 tokens)</button>
-            <button onClick={() => selectDifficulty("medium")} className="rounded-xl bg-amber-600 px-6 py-3 font-semibold hover:bg-amber-500">Medium (5×5 · 4 lines · 3–6 tokens)</button>
-            <button onClick={() => selectDifficulty("hard")} className="rounded-xl bg-rose-600 px-6 py-3 font-semibold hover:bg-rose-500">Hard (8×7 · 6 lines · 5–7 tokens)</button>
+          <div className="flex flex-col items-center gap-4">
+            <button
+              onClick={() => selectDifficulty("easy")}
+              className="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 px-6 py-3 font-semibold text-emerald-50 shadow hover:from-emerald-500 hover:to-emerald-400 ring-1 ring-emerald-400/30 hover:ring-emerald-300/50"
+            >
+              Easy (2×2 · 2 lines · 2 tokens)
+            </button>
+            <button
+              onClick={() => selectDifficulty("medium")}
+              className="w-full rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 px-6 py-3 font-semibold text-amber-50 shadow hover:from-amber-500 hover:to-amber-400 ring-1 ring-amber-400/30 hover:ring-amber-300/50"
+            >
+              Medium (5×5 · 4 lines · 3–6 tokens)
+            </button>
+            <button
+              onClick={() => selectDifficulty("hard")}
+              className="w-full rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 px-6 py-3 font-semibold text-rose-50 shadow hover:from-rose-500 hover:to-rose-400 ring-1 ring-rose-400/30 hover:ring-rose-300/50"
+            >
+              Hard (8×7 · 6 lines · 5–7 tokens)
+            </button>
           </div>
         </div>
       </div>
