@@ -188,6 +188,8 @@ export default function App() {
   const [fail, setFail] = useState(false);
   const [lastClicked, setLastClicked] = useState(null);    // {r,c, token, status: 'correct'|'fault'}
   const { play, enabled, setEnabled } = useSFX();
+  const [faultFX, setFaultFX] = useState(false);
+  const [confetti, setConfetti] = useState([]);
 
   // NEW: state for branch invalidation & cohorts
   const [competeSet, setCompeteSet] = useState(null); // Set<number> or null
@@ -289,13 +291,17 @@ export default function App() {
         const inc = lineIndexes.includes(i) ? 1 : 0;
         return (lineProgress[i] + inc) >= line.length;
       });
-      if (done) { play("win"); setWin(true); setRunning(false); }
+      if (done) { play("win"); triggerConfetti(); setWin(true); setRunning(false); }
     }, 0);
   }
 
   function fault(msg, r, c) {
     play("fault");
     setFaults((f) => { const nf = f + 1; if (nf >= FAULTS_MAX) { doFail("Too many faults."); } return nf; });
+
+    // trigger subtle screen feedback
+    setFaultFX(true);
+    setTimeout(() => setFaultFX(false), 250);
   
     // Reset the cohort if present; otherwise reset only the active line
     setLineProgress((prev) => {
@@ -407,6 +413,35 @@ export default function App() {
   }
   function stop() { setRunning(false); }
 
+  function triggerConfetti() {
+    const count = 160;
+    const colors = ["#22c55e", "#eab308", "#f43f5e", "#3b82f6", "#a855f7"];
+    const parts = Array.from({ length: count }, (_, i) => {
+      const fromLeft = i % 2 === 0; // alternate sides
+      const startLeft = fromLeft ? -2 : 102; // % just off left/right edges
+      const startTop = 102; // vh, start just below the bottom
+      const size = 4 + Math.random() * 7; // px
+      const duration = 2000 + Math.random() * 1800; // 2.0s–3.8s, slower
+      const delay = Math.random() * 900; // up to 0.9s stagger
+      const dx = (fromLeft ? 1 : -1) * (50 + Math.random() * 60); // vw travel across
+      const dy = -(60 + Math.random() * 40); // vh — travel upward
+      return {
+        id: i,
+        startLeft,
+        startTop,
+        size,
+        color: colors[i % colors.length],
+        duration,
+        delay,
+        dx,
+        dy,
+      };
+    });
+    setConfetti(parts);
+    // Clear after the longest possible animation finishes
+    setTimeout(() => setConfetti([]), 5000);
+  }
+
   // visuals
   function cellClass(r, c) {
     const token = grid?.[r]?.[c];
@@ -429,7 +464,7 @@ export default function App() {
   }
 
   function objectiveTokenClass(done, current, highlight) {
-    let c = "px-2 py-1 rounded-lg border text-sm tracking-widest select-none";
+    let c = "px-1.5 py-0.5 rounded-lg border text-xs tracking-widest select-none";
     if (done) c += " bg-emerald-800/30 border-emerald-500/40 text-emerald-200 line-through";
     else if (highlight) c += " bg-amber-600/30 border-amber-400 text-amber-100"; // yellow when grid-hovered valid next token
     else if (current) c += " bg-neutral-800 border-neutral-600 text-neutral-100";
@@ -474,8 +509,31 @@ export default function App() {
 
   // main UI
   return (
-    <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 p-6">
-      <div className="mx-auto max-w-6xl">
+    <div className={`min-h-screen w-full bg-neutral-950 text-neutral-100 p-6 overflow-x-hidden will-change-transform${faultFX ? " fault-shake" : ""}`}>
+      {faultFX && <div className="pointer-events-none fixed inset-0 bg-rose-500/10" />}
+      {confetti.length > 0 && (
+        <div className="pointer-events-none fixed inset-0 overflow-hidden" style={{ zIndex: 9999 }}>
+          {confetti.map((p) => (
+            <span
+              key={p.id}
+              className="confetti-piece"
+              style={{
+                left: `${p.startLeft}%`,
+                top: `${p.startTop}vh`,
+                width: `${p.size}px`,
+                height: `${p.size * 0.4}px`,
+                backgroundColor: p.color,
+                boxShadow: `0 0 6px ${p.color}33`,
+                animation: `confetti-blow ${p.duration}ms cubic-bezier(0.22, 1, 0.36, 1) ${p.delay}ms forwards`,
+                '--dx': `${p.dx}vw`,
+                '--dy': `${p.dy}vh`,
+              }}
+            />
+          ))}
+        </div>
+      )}
+      <div className="flex w-full justify-center">
+        <div className="w-full max-w-6xl scale-90 origin-top">
         {/* header */}
         <header className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -503,9 +561,11 @@ export default function App() {
           <HUD label="Time" value={fmtTime(Math.max(0, timeLeft))} warn={running && timeLeft <= 10} />
         </div>
 
-        {message && (
-          <div className="mt-3 rounded-xl bg-neutral-900 p-3 text-sm text-neutral-200">{message}</div>
-        )}
+        <div className="mt-3" style={{ minHeight: "44px" }}>
+          {message && (
+            <div className="rounded-xl bg-neutral-900 p-3 text-sm text-neutral-200">{message}</div>
+          )}
+        </div>
 
         <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
           {/* Grid */}
@@ -543,18 +603,18 @@ export default function App() {
           </div>
 
           {/* Objectives */}
-          <div className="rounded-2xl bg-neutral-900 p-4 shadow-xl">
-            <div className="mb-2 text-sm text-neutral-400">Objectives (hover to highlight grid · grid-hover shows next-needed token in yellow)</div>
-            <div className="flex flex-col gap-3">
+          <div className="rounded-2xl bg-neutral-900 p-3 shadow-xl">
+            <div className="mb-2 text-xs text-neutral-400">Objectives (hover to highlight grid · grid-hover shows next-needed token in yellow)</div>
+            <div className="flex flex-col gap-2">
               {objectiveLines.map((line, i) => {
                 const prog = lineProgress[i] ?? 0;
                 const isActive = i === activeLine;
                 return (
                   <div
                     key={i}
-                    className={`rounded-xl p-3 ${isActive ? "ring-1 ring-emerald-400/40 bg-neutral-800" : "bg-neutral-900"}`}
+                    className={`rounded-xl p-2 ${isActive ? "ring-1 ring-emerald-400/40 bg-neutral-800" : "bg-neutral-900"}`}
                   >
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1">
                       {line.map((tok, j) => {
                         const done = j < prog;
                         const current = j === prog && running && !win && !fail;
@@ -571,7 +631,7 @@ export default function App() {
                         );
                       })}
                     </div>
-                    <div className="mt-1 text-xs text-neutral-500">
+                    <div className="mt-1 text-[10px] text-neutral-500">
                       {`${prog}/${line.length}`}
                     </div>
                   </div>
@@ -607,6 +667,7 @@ export default function App() {
         <footer className="mt-6 text-xs text-neutral-500">
           Objectives are connected paths from the current grid. Faults reset the active line; completed lines are safe.
         </footer>
+        </div>
       </div>
     </div>
   );

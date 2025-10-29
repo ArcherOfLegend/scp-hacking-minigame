@@ -25,8 +25,6 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
 }
@@ -67,4 +65,36 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
+}
+
+/* Subtle fault feedback */
+@keyframes subtle-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-4px, 0, 0); }
+  40% { transform: translate3d(4px, 0, 0); }
+  60% { transform: translate3d(-3px, 0, 0); }
+  80% { transform: translate3d(3px, 0, 0); }
+}
+.fault-shake {
+  animation: subtle-shake 250ms ease-in-out;
+}
+
+/* Confetti */
+@keyframes confetti-fall {
+  0% { transform: translate3d(0, -10vh, 0) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translate3d(var(--drift, 0px), 110vh, 0) rotate(720deg); opacity: 0; }
+}
+.confetti-piece {
+  position: absolute;
+  will-change: transform, opacity;
+  animation-fill-mode: forwards;
+  border-radius: 2px;
+}
+
+/* Side-blown variant */
+@keyframes confetti-blow {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translate3d(var(--dx, 0), var(--dy, 0), 0) rotate(720deg); opacity: 0; }
 }
