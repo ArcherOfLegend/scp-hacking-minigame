@@ -28,6 +28,10 @@ const FAULTS_MAX = 5;
 // ---------- helpers ----------
 const fmt2 = (n) => n.toString().padStart(2, "0");
 const fmtTime = (t) => `${Math.floor(t / 60)}:${fmt2(Math.max(0, Math.floor(t % 60)))}`;
+const fmtTimeWithMs = (seconds, ms) => {
+  const total = seconds + ms/1000;
+  return total.toFixed(2);
+};
 const rand = (n) => Math.floor(Math.random() * n);
 const choice = (arr) => arr[rand(arr.length)];
 
@@ -176,6 +180,7 @@ export default function App() {
   // game state
   const [running, setRunning] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
+  const [milliseconds, setMilliseconds] = useState(0);
   const [constraint, setConstraint] = useState("top-row"); // 'top-row' | 'column' | 'row'
   const [lastPos, setLastPos] = useState(null);            // {r,c}
   const [faults, setFaults] = useState(0);
@@ -210,7 +215,7 @@ export default function App() {
     setObjectiveLines(o);
     setLineProgress(o.map(() => 0));
 
-    setRunning(false); setConstraint("top-row"); setLastPos(null); setFaults(0); setTimeLeft(TIMER_SECONDS);
+    setRunning(false); setConstraint("top-row"); setLastPos(null); setFaults(0); setTimeLeft(TIMER_SECONDS); setMilliseconds(0);
     setHoverToken(null); setObjHoverToken(null); setActiveLine(null); setWin(false); setFail(false); setMessage(""); setLastClicked(null);
     setCompeteSet(null);
 
@@ -221,8 +226,20 @@ export default function App() {
   // timer
   useEffect(() => {
     if (!running || win || fail) return;
-    const id = setInterval(() => setTimeLeft((t) => t - 1), 1000);
+    const startTime = Date.now();
+    const id = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const totalRemaining = TIMER_SECONDS * 1000 - elapsed;
+      if (totalRemaining <= 0) {
+        setTimeLeft(0);
+        setMilliseconds(0);
+      } else {
+        setTimeLeft(Math.floor(totalRemaining / 1000));
+        setMilliseconds(totalRemaining % 1000);
+      }
+    }, 100);
     return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, win, fail]);
   useEffect(() => { if (timeLeft <= 0 && running) doFail("Time's up."); }, [timeLeft, running]);
 
@@ -387,7 +404,7 @@ export default function App() {
     const g = generateGrid(rows, cols);
     const o = generateObjectiveLines(g, lineLenRange, linesCount);
     setGrid(g); setObjectiveLines(o); setLineProgress(o.map(() => 0)); setActiveLine(null);
-    setConstraint("top-row"); setFaults(0); setWin(false); setFail(false); setMessage(""); setLastClicked(null);
+    setConstraint("top-row"); setFaults(0); setTimeLeft(TIMER_SECONDS); setMilliseconds(0); setWin(false); setFail(false); setMessage(""); setLastClicked(null);
     setCompeteSet(null);
 
     devSelfTest(g, o);
@@ -400,6 +417,7 @@ export default function App() {
     setRunning(true);
     play("start");
     setTimeLeft(TIMER_SECONDS);
+    setMilliseconds(0);
     setConstraint("top-row");
     setLastPos(null);
     setFaults(0);
@@ -450,25 +468,25 @@ export default function App() {
     const isLast = lastClicked && lastClicked.r === r && lastClicked.c === c;
 
     let cls =
-      "border text-sm font-bold rounded-xl h-10 w-14 flex items-center justify-center transition select-none";
-    if (isAllowed && running) cls += " border-neutral-600 bg-neutral-800 hover:bg-neutral-700 cursor-pointer";
-    else if (!running) cls += " border-neutral-700 bg-neutral-800"; // plan view
-    else cls += " border-neutral-900 bg-neutral-950 opacity-30 cursor-not-allowed pointer-events-none";
+      "border text-sm font-bold rounded h-10 w-14 flex items-center justify-center transition select-none terminal-text font-mono";
+    if (isAllowed && running) cls += " terminal-grid-cell cursor-pointer";
+    else if (!running) cls += " border-[#00aa28]/20 bg-[#0a0f0a]/50"; // plan view
+    else cls += " border-[#00aa28]/10 bg-[#0a0f0a]/20 opacity-30 cursor-not-allowed pointer-events-none";
 
-    if (isLast) cls += lastClicked.status === "correct" ? " ring-1 ring-emerald-400/60" : " ring-1 ring-rose-400/60";
+    if (isLast) cls += lastClicked.status === "correct" ? " ring-2 ring-[#00ff41]/80" : " ring-2 ring-[#ff3333]/80";
 
     if (hoverToken && running) {
-      if (matchesHover) cls += " !bg-emerald-700/30 !border-emerald-400"; else if (!isLast) cls += " opacity-30";
+      if (matchesHover) cls += " !bg-[#00ff41]/30 !border-[#00ff41]"; else if (!isLast) cls += " opacity-20";
     }
     return cls;
   }
 
   function objectiveTokenClass(done, current, highlight) {
-    let c = "px-1.5 py-0.5 rounded-lg border text-xs tracking-widest select-none";
-    if (done) c += " bg-emerald-800/30 border-emerald-500/40 text-emerald-200 line-through";
-    else if (highlight) c += " bg-amber-600/30 border-amber-400 text-amber-100"; // yellow when grid-hovered valid next token
-    else if (current) c += " bg-neutral-800 border-neutral-600 text-neutral-100";
-    else c += " bg-neutral-900 border-neutral-800 text-neutral-300";
+    let c = "px-1.5 py-0.5 rounded border text-xs tracking-widest select-none font-mono";
+    if (done) c += " bg-[#00ff41]/10 border-[#00ff41]/40 text-[#00aa28] line-through";
+    else if (highlight) c += " bg-yellow-600/30 border-yellow-400 text-yellow-100"; // yellow when grid-hovered valid next token
+    else if (current) c += " bg-[#0a0f0a] border-[#00ff41]/40 text-[#00ff41]";
+    else c += " bg-[#0a0f0a]/50 border-[#00aa28]/20 text-[#00aa28]";
     return c;
   }
 
@@ -479,28 +497,30 @@ export default function App() {
   // difficulty screen
   if (!difficulty) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-neutral-950 text-neutral-100">
-        <div className="w-full max-w-md rounded-3xl bg-neutral-900 p-10 text-center shadow-xl">
-          <h1 className="mb-6 text-3xl font-black">Select Difficulty</h1>
-          <div className="flex flex-col items-center gap-4">
-            <button
-              onClick={() => selectDifficulty("easy")}
-              className="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 px-6 py-3 font-semibold text-emerald-50 shadow hover:from-emerald-500 hover:to-emerald-400 ring-1 ring-emerald-400/30 hover:ring-emerald-300/50"
-            >
-              Easy (2×2 · 2 lines · 2 tokens)
-            </button>
-            <button
-              onClick={() => selectDifficulty("medium")}
-              className="w-full rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 px-6 py-3 font-semibold text-amber-50 shadow hover:from-amber-500 hover:to-amber-400 ring-1 ring-amber-400/30 hover:ring-amber-300/50"
-            >
-              Medium (5×5 · 4 lines · 3–6 tokens)
-            </button>
-            <button
-              onClick={() => selectDifficulty("hard")}
-              className="w-full rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 px-6 py-3 font-semibold text-rose-50 shadow hover:from-rose-500 hover:to-rose-400 ring-1 ring-rose-400/30 hover:ring-rose-300/50"
-            >
-              Hard (8×7 · 6 lines · 5–7 tokens)
-            </button>
+      <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black">
+        <div className="monitor-frame">
+          <div className="monitor-screen p-12 text-center">
+            <h1 className="mb-8 text-4xl font-black terminal-text">SELECT DIFFICULTY</h1>
+            <div className="flex flex-col items-center gap-4">
+              <button
+                onClick={() => selectDifficulty("easy")}
+                className="w-full terminal-button px-8 py-4 font-bold text-lg"
+              >
+                [EASY] 2×2 · 2 LINES · 2 TOKENS
+              </button>
+              <button
+                onClick={() => selectDifficulty("medium")}
+                className="w-full terminal-button px-8 py-4 font-bold text-lg"
+              >
+                [MEDIUM] 5×5 · 4 LINES · 3–6 TOKENS
+              </button>
+              <button
+                onClick={() => selectDifficulty("hard")}
+                className="w-full terminal-button px-8 py-4 font-bold text-lg"
+              >
+                [HARD] 8×7 · 6 LINES · 5–7 TOKENS
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -509,7 +529,7 @@ export default function App() {
 
   // main UI
   return (
-    <div className={`min-h-screen w-full bg-neutral-950 text-neutral-100 p-6 overflow-x-hidden will-change-transform${faultFX ? " fault-shake" : ""}`}>
+    <div className={`min-h-screen w-full bg-gradient-to-br from-gray-900 via-gray-800 to-black text-neutral-100 p-6 overflow-x-hidden will-change-transform${faultFX ? " fault-shake" : ""}`}>
       {faultFX && <div className="pointer-events-none fixed inset-0 bg-rose-500/10" />}
       {confetti.length > 0 && (
         <div className="pointer-events-none fixed inset-0 overflow-hidden" style={{ zIndex: 9999 }}>
@@ -537,134 +557,157 @@ export default function App() {
         {/* header */}
         <header className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-3xl font-black tracking-tight">SCP:RP Hacking — {difficulty.toUpperCase()}</h1>
-            <p className="text-sm text-neutral-400">Press <span className="font-semibold">Start</span> to play this exact grid.</p>
+            <h1 className="text-3xl font-black tracking-tight terminal-text">SCP:RP HACKING — {difficulty.toUpperCase()}</h1>
+            <p className="text-sm terminal-text-muted">Press <span className="font-semibold">START</span> to play this exact grid.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button className="rounded-2xl bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700" onClick={() => setDifficulty(null)} disabled={running}>Change Difficulty</button>
+            <button className="terminal-button px-3 py-2 text-sm" onClick={() => setDifficulty(null)} disabled={running}>CHANGE DIFFICULTY</button>
             {!running ? (
               <>
-                <button className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500" onClick={start}>Start</button>
+                <button className="terminal-button px-4 py-2 text-sm font-semibold" onClick={start}>START</button>
               </>
             ) : (
-              <button className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold hover:bg-rose-500" onClick={stop}>Stop</button>
+              <button className="terminal-button terminal-button-danger px-4 py-2 text-sm font-semibold" onClick={stop}>ABORT</button>
             )}
           </div>
         </header>
 
         {/* HUD */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
-          <HUD label="Grid" value={`${cols}×${rows}`} />
-          <HUD label="Lines done" value={`${linesDone}/${objectiveLines.length || 0}`} />
-          <HUD label="Faults" value={`${faults}/${FAULTS_MAX}`} warn={faults > 0} />
-          <HUD label="Constraint" value={constraint} />
-          <HUD label="Time" value={fmtTime(Math.max(0, timeLeft))} warn={running && timeLeft <= 10} />
+          <HUD label="GRID" value={`${cols}×${rows}`} />
+          <HUD label="LINES DONE" value={`${linesDone}/${objectiveLines.length || 0}`} />
+          <HUD label="FAULTS" value={`${faults}/${FAULTS_MAX}`} warn={faults > 0} />
+          <HUD label="CONSTRAINT" value={constraint.toUpperCase()} />
+          <HUD label="TIME" value={fmtTime(Math.max(0, timeLeft))} warn={running && timeLeft <= 10} />
         </div>
 
         <div className="mt-3" style={{ minHeight: "44px" }}>
           {message && (
-            <div className="rounded-xl bg-neutral-900 p-3 text-sm text-neutral-200">{message}</div>
+            <div className="rounded p-3 text-sm terminal-text-muted font-mono bg-[#0a0f0a]/50 border border-[#00aa28]/20">{message}</div>
           )}
         </div>
 
         <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
           {/* Grid */}
           <div className="lg:col-span-2">
-            <div className="rounded-2xl bg-neutral-900 p-4 shadow-xl">
-              <div
-                className="grid"
-                style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, gap: "6px" }}
-              >
-                {grid.map((row, r) =>
-                  row.map((tok, c) => (
-                    <button
-                      key={`${r}-${c}`}
-                      onClick={() => handlePick(r, c)}
-                      disabled={!running || win || fail}
-                      className={cellClass(r, c)}
-                      onMouseEnter={() => {
-                        // If this cell is currently selectable and advances some line, show yellow on that objective token
-                        if (running && allowed(r, c)) {
-                          const token = grid[r][c];
-                          const candidates = candidateLinesFor(token);
-                          setObjHoverToken(candidates.length > 0 ? token : null);
-                        } else {
-                          setObjHoverToken(null);
-                        }
-                      }}
-                      onMouseLeave={() => setObjHoverToken(null)}
-                    >
-                      {tok}
-                    </button>
-                  ))
-                )}
+            <div className="monitor-frame">
+              <div className="monitor-screen p-6">
+                <div className="mb-3 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <span className="terminal-text-muted text-xs font-mono">MEMORY MATRIX</span>
+                    <span className="terminal-text-red text-xs font-mono">OVERFLOW ({faults}/{FAULTS_MAX})</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="terminal-text-red text-xs font-mono">FIRMWARE VER. 3.10.029</span>
+                    {running && <button className="terminal-text-red text-xs font-mono px-2 py-1 border border-red-500 hover:bg-red-500/10" onClick={stop}>ABORT</button>}
+                  </div>
+                </div>
+                <div
+                  className="grid"
+                  style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, gap: "6px" }}
+                >
+                  {grid.map((row, r) =>
+                    row.map((tok, c) => (
+                      <button
+                        key={`${r}-${c}`}
+                        onClick={() => handlePick(r, c)}
+                        disabled={!running || win || fail}
+                        className={cellClass(r, c)}
+                        onMouseEnter={() => {
+                          // If this cell is currently selectable and advances some line, show yellow on that objective token
+                          if (running && allowed(r, c)) {
+                            const token = grid[r][c];
+                            const candidates = candidateLinesFor(token);
+                            setObjHoverToken(candidates.length > 0 ? token : null);
+                          } else {
+                            setObjHoverToken(null);
+                          }
+                        }}
+                        onMouseLeave={() => setObjHoverToken(null)}
+                      >
+                        {tok}
+                      </button>
+                    ))
+                  )}
+                </div>
+                <div className="mt-3 flex justify-center">
+                  <div className="terminal-border px-4 py-2 rounded">
+                    <span className={`font-mono text-xs ${running ? 'terminal-text-red' : 'terminal-text'}`}>
+                      {running ? `OVERLOAD: ${fmtTimeWithMs(timeLeft, milliseconds)}` : 'CIRCUIT STABLE'}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Objectives */}
-          <div className="rounded-2xl bg-neutral-900 p-3 shadow-xl">
-            <div className="mb-2 text-xs text-neutral-400">Objectives (hover to highlight grid · grid-hover shows next-needed token in yellow)</div>
-            <div className="flex flex-col gap-2">
-              {objectiveLines.map((line, i) => {
-                const prog = lineProgress[i] ?? 0;
-                const isActive = i === activeLine;
-                return (
-                  <div
-                    key={i}
-                    className={`rounded-xl p-2 ${isActive ? "ring-1 ring-emerald-400/40 bg-neutral-800" : "bg-neutral-900"}`}
-                  >
-                    <div className="flex flex-wrap gap-1">
-                      {line.map((tok, j) => {
-                        const done = j < prog;
-                        const current = j === prog && running && !win && !fail;
-                        const highlight = j === prog && tok === objHoverToken; // grid-hover, valid next pick only
-                        return (
-                          <span
-                            key={j}
-                            className={objectiveTokenClass(done, current, highlight)}
-                            onMouseEnter={() => setHoverToken(tok)}
-                            onMouseLeave={() => setHoverToken(null)}
-                          >
-                            {tok}
-                          </span>
-                        );
-                      })}
+          <div className="monitor-frame">
+            <div className="monitor-screen p-4">
+              <div className="mb-3 terminal-text-muted text-xs font-mono">OVERRIDE ROUTINES</div>
+              <div className="flex flex-col gap-2">
+                {objectiveLines.map((line, i) => {
+                  const prog = lineProgress[i] ?? 0;
+                  const isActive = i === activeLine;
+                  return (
+                    <div
+                      key={i}
+                      className={`rounded p-2 ${isActive ? "border border-[#00ff41]/40 bg-[#0a0f0a]" : "border border-[#00aa28]/10"}`}
+                    >
+                      <div className="flex flex-wrap gap-1">
+                        {line.map((tok, j) => {
+                          const done = j < prog;
+                          const current = j === prog && running && !win && !fail;
+                          const highlight = j === prog && tok === objHoverToken; // grid-hover, valid next pick only
+                          return (
+                            <span
+                              key={j}
+                              className={objectiveTokenClass(done, current, highlight)}
+                              onMouseEnter={() => setHoverToken(tok)}
+                              onMouseLeave={() => setHoverToken(null)}
+                            >
+                              {tok}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-1 text-[10px] terminal-text-muted font-mono">
+                        {`${prog}/${line.length}`}
+                      </div>
                     </div>
-                    <div className="mt-1 text-[10px] text-neutral-500">
-                      {`${prog}/${line.length}`}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
 
             {win && (
-              <div className="mt-4 rounded-xl border border-emerald-400/40 bg-emerald-800/20 p-3 text-emerald-200">
-                <div className="font-bold">Hack complete!</div>
-                <div className="text-sm">All lines cleared.</div>
+              <div className="mt-4 border border-[#00ff41]/40 bg-[#0a0f0a]/80 p-3 terminal-text rounded">
+                <div className="font-bold font-mono">HACK COMPLETE!</div>
+                <div className="text-sm font-mono">All lines cleared.</div>
               </div>
             )}
             {fail && (
-              <div className="mt-4 rounded-xl border border-rose-400/40 bg-rose-800/20 p-3 text-rose-200">
-                <div className="font-bold">Hack failed</div>
-                <div className="text-sm">
+              <div className="mt-4 border border-[#ff3333]/40 bg-[#0a0f0a]/80 p-3 terminal-text-red rounded">
+                <div className="font-bold font-mono">HACK FAILED</div>
+                <div className="text-sm font-mono">
                   {message || (faults >= FAULTS_MAX ? "Too many faults." : "Timer expired.")}
                 </div>
               </div>
             )}
           </div>
         </div>
+      </div>
 
         {/* Bottom timer bar */}
-        <div className="mt-6 h-3 w-full rounded-full bg-neutral-900">
-          <div
-            className="h-3 rounded-full bg-emerald-600 transition-[width]"
-            style={{ width: `${(Math.max(0, timeLeft) / TIMER_SECONDS) * 100}%` }}
-          />
+        <div className="mt-6">
+          <div className="progress-bar-track h-3 w-full rounded-full">
+            <div
+              className="progress-bar-fill h-3 rounded-full"
+              style={{ width: `${(Math.max(0, timeLeft) / TIMER_SECONDS) * 100}%` }}
+            />
+          </div>
         </div>
 
-        <footer className="mt-6 text-xs text-neutral-500">
+        <footer className="mt-6 text-xs terminal-text-muted font-mono">
           Objectives are connected paths from the current grid. Faults reset the active line; completed lines are safe.
         </footer>
         </div>
@@ -675,9 +718,9 @@ export default function App() {
 
 function HUD({ label, value, warn }) {
   return (
-    <div className={`rounded-2xl p-4 shadow-lg ${warn ? "bg-amber-950/40 ring-1 ring-amber-400/40" : "bg-neutral-900"}`}>
-      <div className="text-xs uppercase tracking-wider text-neutral-400">{label}</div>
-      <div className="mt-1 text-2xl font-bold">{value}</div>
+    <div className={`rounded p-4 ${warn ? "bg-[#3a2a0a]/40 border border-yellow-400/40" : "bg-[#0a0f0a] border border-[#00aa28]/20"}`}>
+      <div className="text-xs uppercase tracking-wider terminal-text-muted font-mono">{label}</div>
+      <div className="mt-1 text-2xl font-bold terminal-text font-mono">{value}</div>
     </div>
   );
 }
